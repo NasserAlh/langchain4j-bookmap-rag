@@ -22,8 +22,8 @@ This document outlines the plan to create a modern web GUI for the existing Java
 | Styling | Tailwind CSS | 4.x |
 | SSE Client | sveltekit-sse | Latest |
 | Icons | lucide-svelte | Latest |
-| Backend HTTP Server | Javalin | 6.4.0 |
-| JSON Serialization | Jackson | 2.17.0 |
+| Backend HTTP Server | Javalin | 6.7.0 |
+| JSON Serialization | Jackson | 2.20.1 |
 
 ---
 
@@ -40,14 +40,14 @@ Expose the existing `DeepSeekChatbot` functionality via REST endpoints and Serve
 <dependency>
     <groupId>io.javalin</groupId>
     <artifactId>javalin</artifactId>
-    <version>6.4.0</version>
+    <version>6.7.0</version>
 </dependency>
 
 <!-- Jackson for JSON -->
 <dependency>
     <groupId>com.fasterxml.jackson.core</groupId>
     <artifactId>jackson-databind</artifactId>
-    <version>2.17.0</version>
+    <version>2.20.1</version>
 </dependency>
 ```
 
