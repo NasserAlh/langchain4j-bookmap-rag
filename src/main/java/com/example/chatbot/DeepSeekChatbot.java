@@ -35,42 +35,58 @@ import java.util.stream.Collectors;
 public class DeepSeekChatbot {
 
     private static final String DEEPSEEK_API_BASE_URL = "https://api.deepseek.com";
-    private static final String DEEPSEEK_MODEL = "deepseek-chat";
     private static final String EMBEDDINGS_PATH = "data/bookmap-embeddings.json";
     private static final String KNOWLEDGE_PATH = "knowledge-materials";
+    private static final int MAX_RETRIES = 3;
+    private static final int MAX_TOKENS = 4096;
 
-    private final ChatLanguageModel chatModel;
-    private final StreamingChatLanguageModel streamingChatModel;
+    // Pricing per 1M tokens (USD)
+    private static final double PRICE_INPUT_CACHE_HIT = 0.028;
+    private static final double PRICE_INPUT_CACHE_MISS = 0.28;
+    private static final double PRICE_OUTPUT = 0.42;
+
+    private ChatLanguageModel chatModel;
+    private StreamingChatLanguageModel streamingChatModel;
     private final ChatMemory chatMemory;
     private ContentRetriever contentRetriever;
     private EmbeddingModel embeddingModel;
+    private String currentModel = "deepseek-chat";
+    private double temperature = 0.7;
     private boolean ragEnabled = false;
     private boolean streamingEnabled = true;  // Streaming enabled by default
+    private boolean showUsage = true;  // Show token usage by default
+
+    private final String apiKey;
 
     public DeepSeekChatbot(String deepSeekApiKey) {
-        // Non-streaming model (for fallback)
+        this.apiKey = deepSeekApiKey;
+        this.chatMemory = MessageWindowChatMemory.withMaxMessages(20);
+        rebuildModels();
+    }
+
+    /**
+     * Rebuild chat models with current settings (model name, temperature).
+     */
+    private void rebuildModels() {
         this.chatModel = OpenAiChatModel.builder()
                 .baseUrl(DEEPSEEK_API_BASE_URL)
-                .apiKey(deepSeekApiKey)
-                .modelName(DEEPSEEK_MODEL)
-                .temperature(0.7)
-                .maxTokens(2048)
+                .apiKey(apiKey)
+                .modelName(currentModel)
+                .temperature(temperature)
+                .maxTokens(MAX_TOKENS)
                 .logRequests(false)
                 .logResponses(false)
                 .build();
 
-        // Streaming model for real-time responses
         this.streamingChatModel = OpenAiStreamingChatModel.builder()
                 .baseUrl(DEEPSEEK_API_BASE_URL)
-                .apiKey(deepSeekApiKey)
-                .modelName(DEEPSEEK_MODEL)
-                .temperature(0.7)
-                .maxTokens(2048)
+                .apiKey(apiKey)
+                .modelName(currentModel)
+                .temperature(temperature)
+                .maxTokens(MAX_TOKENS)
                 .logRequests(false)
                 .logResponses(false)
                 .build();
-
-        this.chatMemory = MessageWindowChatMemory.withMaxMessages(20);
     }
 
     /**
@@ -155,10 +171,76 @@ public class DeepSeekChatbot {
      */
     public String chat(String userMessage) {
         chatMemory.add(UserMessage.from(userMessage));
-        ChatResponse response = chatModel.chat(chatMemory.messages());
+        ChatResponse response = chatWithRetry();
         AiMessage aiMessage = response.aiMessage();
         chatMemory.add(aiMessage);
+        displayUsage(response);
         return aiMessage.text();
+    }
+
+    /**
+     * Execute chat with retry logic for transient errors.
+     */
+    private ChatResponse chatWithRetry() {
+        Exception lastException = null;
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                return chatModel.chat(chatMemory.messages());
+            } catch (Exception e) {
+                lastException = e;
+                String message = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+
+                // Retry on server errors (500, 503) or rate limits (429)
+                boolean isRetryable = message.contains("500") ||
+                                      message.contains("503") ||
+                                      message.contains("429") ||
+                                      message.contains("server") ||
+                                      message.contains("overload") ||
+                                      message.contains("rate");
+
+                if (isRetryable && attempt < MAX_RETRIES - 1) {
+                    long waitTime = (long) Math.pow(2, attempt) * 1000;
+                    System.out.printf("[Retry %d/%d in %ds due to: %s]%n",
+                            attempt + 1, MAX_RETRIES, waitTime / 1000,
+                            e.getMessage() != null ? e.getMessage().substring(0, Math.min(50, e.getMessage().length())) : "unknown error");
+                    try {
+                        Thread.sleep(waitTime);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Retry interrupted", ie);
+                    }
+                } else {
+                    throw e;
+                }
+            }
+        }
+        throw new RuntimeException("Max retries exceeded", lastException);
+    }
+
+    /**
+     * Display token usage and estimated cost.
+     */
+    private void displayUsage(ChatResponse response) {
+        if (!showUsage || response.metadata() == null) {
+            return;
+        }
+        try {
+            var usage = response.metadata().tokenUsage();
+            if (usage != null) {
+                int inputTokens = usage.inputTokenCount() != null ? usage.inputTokenCount() : 0;
+                int outputTokens = usage.outputTokenCount() != null ? usage.outputTokenCount() : 0;
+
+                // Estimate cost (assume cache miss for simplicity)
+                double inputCost = (inputTokens / 1_000_000.0) * PRICE_INPUT_CACHE_MISS;
+                double outputCost = (outputTokens / 1_000_000.0) * PRICE_OUTPUT;
+                double totalCost = inputCost + outputCost;
+
+                System.out.printf("[Tokens: %d in, %d out | Est. cost: $%.6f]%n",
+                        inputTokens, outputTokens, totalCost);
+            }
+        } catch (Exception e) {
+            // Silently ignore usage display errors
+        }
     }
 
     /**
@@ -170,7 +252,7 @@ public class DeepSeekChatbot {
 
         System.out.print("\nDeepSeek: ");
 
-        CompletableFuture<Void> future = new CompletableFuture<>();
+        CompletableFuture<ChatResponse> future = new CompletableFuture<>();
         StringBuilder fullResponse = new StringBuilder();
 
         streamingChatModel.chat(chatMemory.messages(), new StreamingChatResponseHandler() {
@@ -186,7 +268,7 @@ public class DeepSeekChatbot {
                 System.out.println();
                 // Add the complete response to memory
                 chatMemory.add(response.aiMessage());
-                future.complete(null);
+                future.complete(response);
             }
 
             @Override
@@ -198,7 +280,8 @@ public class DeepSeekChatbot {
 
         // Wait for streaming to complete
         try {
-            future.join();
+            ChatResponse response = future.join();
+            displayUsage(response);
         } catch (Exception e) {
             System.err.println("Streaming interrupted: " + e.getMessage());
         }
@@ -218,9 +301,10 @@ public class DeepSeekChatbot {
         }
 
         chatMemory.add(UserMessage.from(augmentedMessage));
-        ChatResponse response = chatModel.chat(chatMemory.messages());
+        ChatResponse response = chatWithRetry();
         AiMessage aiMessage = response.aiMessage();
         chatMemory.add(aiMessage);
+        displayUsage(response);
         return aiMessage.text();
     }
 
@@ -243,7 +327,7 @@ public class DeepSeekChatbot {
 
         System.out.print("\nDeepSeek: ");
 
-        CompletableFuture<Void> future = new CompletableFuture<>();
+        CompletableFuture<ChatResponse> future = new CompletableFuture<>();
         StringBuilder fullResponse = new StringBuilder();
 
         streamingChatModel.chat(chatMemory.messages(), new StreamingChatResponseHandler() {
@@ -258,7 +342,7 @@ public class DeepSeekChatbot {
                 System.out.println();
                 System.out.println();
                 chatMemory.add(response.aiMessage());
-                future.complete(null);
+                future.complete(response);
             }
 
             @Override
@@ -269,7 +353,8 @@ public class DeepSeekChatbot {
         });
 
         try {
-            future.join();
+            ChatResponse response = future.join();
+            displayUsage(response);
         } catch (Exception e) {
             System.err.println("Streaming interrupted: " + e.getMessage());
         }
@@ -338,12 +423,68 @@ public class DeepSeekChatbot {
         System.out.println("Streaming mode: " + (streamingEnabled ? "ON" : "OFF"));
     }
 
+    /**
+     * Toggle usage display on/off.
+     */
+    public void toggleUsage() {
+        showUsage = !showUsage;
+        System.out.println("Usage display: " + (showUsage ? "ON" : "OFF"));
+    }
+
+    /**
+     * Set the temperature for response generation.
+     * Recommended values:
+     * - 0.0: Coding/Math (deterministic)
+     * - 1.0: Data Analysis (balanced)
+     * - 1.3: General Conversation
+     * - 1.5: Creative Writing
+     *
+     * @param temp temperature value (0.0 to 2.0)
+     */
+    public void setTemperature(double temp) {
+        if (temp < 0.0 || temp > 2.0) {
+            System.out.println("Temperature must be between 0.0 and 2.0");
+            return;
+        }
+        this.temperature = temp;
+        rebuildModels();
+        System.out.printf("Temperature set to %.1f%n", temperature);
+        System.out.println("  Hint: 0.0=Coding, 1.0=Analysis, 1.3=Chat, 1.5=Creative");
+    }
+
+    /**
+     * Switch between DeepSeek models.
+     *
+     * @param model "deepseek-chat" or "deepseek-reasoner"
+     */
+    public void setModel(String model) {
+        if (!model.equals("deepseek-chat") && !model.equals("deepseek-reasoner")) {
+            System.out.println("Invalid model. Use: deepseek-chat or deepseek-reasoner");
+            return;
+        }
+        this.currentModel = model;
+        rebuildModels();
+        System.out.println("Model switched to: " + currentModel);
+        if (model.equals("deepseek-reasoner")) {
+            System.out.println("  Note: Reasoner model uses Chain-of-Thought for complex reasoning.");
+            System.out.println("  Note: Function calling is NOT supported with reasoner model.");
+        }
+    }
+
     public boolean isRagEnabled() {
         return ragEnabled;
     }
 
     public boolean isStreamingEnabled() {
         return streamingEnabled;
+    }
+
+    public String getCurrentModel() {
+        return currentModel;
+    }
+
+    public double getTemperature() {
+        return temperature;
     }
 
     public static void main(String[] args) {
@@ -362,11 +503,14 @@ public class DeepSeekChatbot {
         System.out.println("Type your message and press Enter to chat.");
         System.out.println();
         System.out.println("Commands:");
-        System.out.println("  /stream  - Toggle streaming mode (ON by default)");
-        System.out.println("  /rag     - Toggle RAG mode (Bookmap docs)");
-        System.out.println("  /ingest  - Build/rebuild knowledge base");
-        System.out.println("  /clear   - Clear conversation history");
-        System.out.println("  /quit    - Exit");
+        System.out.println("  /stream      - Toggle streaming mode (ON by default)");
+        System.out.println("  /rag         - Toggle RAG mode (Bookmap docs)");
+        System.out.println("  /ingest      - Build/rebuild knowledge base");
+        System.out.println("  /clear       - Clear conversation history");
+        System.out.println("  /temp <val>  - Set temperature (0.0-2.0)");
+        System.out.println("  /model <m>   - Switch model (deepseek-chat/deepseek-reasoner)");
+        System.out.println("  /usage       - Toggle token usage display");
+        System.out.println("  /quit        - Exit");
         System.out.println();
 
         // Try to initialize RAG if embeddings exist
@@ -409,6 +553,40 @@ public class DeepSeekChatbot {
 
             if (input.equalsIgnoreCase("/ingest")) {
                 chatbot.runIngestion();
+                continue;
+            }
+
+            if (input.equalsIgnoreCase("/usage")) {
+                chatbot.toggleUsage();
+                continue;
+            }
+
+            if (input.toLowerCase().startsWith("/temp")) {
+                String[] parts = input.split("\\s+", 2);
+                if (parts.length < 2) {
+                    System.out.printf("Current temperature: %.1f%n", chatbot.getTemperature());
+                    System.out.println("Usage: /temp <value>  (0.0-2.0)");
+                    System.out.println("  0.0 = Coding/Math, 1.0 = Analysis, 1.3 = Chat, 1.5 = Creative");
+                } else {
+                    try {
+                        double temp = Double.parseDouble(parts[1]);
+                        chatbot.setTemperature(temp);
+                    } catch (NumberFormatException e) {
+                        System.out.println("Invalid temperature value. Use a number between 0.0 and 2.0");
+                    }
+                }
+                continue;
+            }
+
+            if (input.toLowerCase().startsWith("/model")) {
+                String[] parts = input.split("\\s+", 2);
+                if (parts.length < 2) {
+                    System.out.println("Current model: " + chatbot.getCurrentModel());
+                    System.out.println("Usage: /model <model-name>");
+                    System.out.println("  Available: deepseek-chat, deepseek-reasoner");
+                } else {
+                    chatbot.setModel(parts[1].trim());
+                }
                 continue;
             }
 

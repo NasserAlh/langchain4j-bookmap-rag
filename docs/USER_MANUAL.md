@@ -11,9 +11,12 @@ A chatbot powered by DeepSeek and LangChain4j with RAG (Retrieval-Augmented Gene
 3. [Running the Chatbot](#running-the-chatbot)
 4. [Commands](#commands)
 5. [Streaming Mode](#streaming-mode)
-6. [RAG Mode](#rag-mode)
-7. [Example Usage](#example-usage)
-8. [Troubleshooting](#troubleshooting)
+6. [Temperature Control](#temperature-control)
+7. [Model Selection](#model-selection)
+8. [Token Usage Display](#token-usage-display)
+9. [RAG Mode](#rag-mode)
+10. [Example Usage](#example-usage)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -72,11 +75,14 @@ You'll see:
 Type your message and press Enter to chat.
 
 Commands:
-  /stream  - Toggle streaming mode (ON by default)
-  /rag     - Toggle RAG mode (Bookmap docs)
-  /ingest  - Build/rebuild knowledge base
-  /clear   - Clear conversation history
-  /quit    - Exit
+  /stream      - Toggle streaming mode (ON by default)
+  /rag         - Toggle RAG mode (Bookmap docs)
+  /ingest      - Build/rebuild knowledge base
+  /clear       - Clear conversation history
+  /temp <val>  - Set temperature (0.0-2.0)
+  /model <m>   - Switch model (deepseek-chat/deepseek-reasoner)
+  /usage       - Toggle token usage display
+  /quit        - Exit
 
 You [Stream]:
 ```
@@ -91,6 +97,9 @@ You [Stream]:
 | `/rag` | Toggle RAG mode on/off. When ON, queries are augmented with relevant Bookmap documentation. |
 | `/ingest` | Build or rebuild the knowledge base from `knowledge-materials/`. Run this once before using RAG, or after updating documentation. |
 | `/clear` | Clear conversation history. Useful for starting a fresh context. |
+| `/temp <value>` | Set temperature (0.0-2.0). Use 0.0 for coding, 1.0 for analysis, 1.3 for chat, 1.5 for creative. |
+| `/model <name>` | Switch model: `deepseek-chat` (default) or `deepseek-reasoner` (for complex reasoning). |
+| `/usage` | Toggle token usage display on/off. Shows tokens and estimated cost after each response. |
 | `/quit` or `/exit` | Exit the chatbot. |
 
 ---
@@ -135,6 +144,81 @@ DeepSeek: To implement a depth listener, you need to...
 ```
 
 The prompt indicator shows all active modes: `[Stream]`, `[RAG]`, or `[Stream] [RAG]`.
+
+---
+
+## Temperature Control
+
+Temperature affects the creativity/randomness of responses. Lower values produce more deterministic, focused outputs; higher values produce more creative, varied outputs.
+
+### Recommended Settings
+
+| Use Case | Temperature | Command |
+|----------|-------------|---------|
+| Coding / Math | 0.0 | `/temp 0` |
+| Data Analysis | 1.0 | `/temp 1` |
+| General Conversation | 1.3 | `/temp 1.3` |
+| Creative Writing | 1.5 | `/temp 1.5` |
+
+### Example
+
+```
+You [Stream]: /temp 0
+Temperature set to 0.0
+  Hint: 0.0=Coding, 1.0=Analysis, 1.3=Chat, 1.5=Creative
+
+You [Stream]: /temp
+Current temperature: 0.0
+Usage: /temp <value>  (0.0-2.0)
+  0.0 = Coding/Math, 1.0 = Analysis, 1.3 = Chat, 1.5 = Creative
+```
+
+---
+
+## Model Selection
+
+Switch between DeepSeek models based on your task:
+
+| Model | Best For |
+|-------|----------|
+| `deepseek-chat` | General conversation, function calling, fast responses (default) |
+| `deepseek-reasoner` | Complex reasoning, math problems, multi-step logic |
+
+### Example
+
+```
+You [Stream]: /model deepseek-reasoner
+Model switched to: deepseek-reasoner
+  Note: Reasoner model uses Chain-of-Thought for complex reasoning.
+  Note: Function calling is NOT supported with reasoner model.
+
+You [Stream]: /model
+Current model: deepseek-reasoner
+Usage: /model <model-name>
+  Available: deepseek-chat, deepseek-reasoner
+```
+
+---
+
+## Token Usage Display
+
+After each response, the chatbot can display token usage and estimated cost:
+
+```
+[Tokens: 150 in, 423 out | Est. cost: $0.000220]
+```
+
+### Toggle Usage Display
+
+```
+You [Stream]: /usage
+Usage display: OFF
+
+You [Stream]: /usage
+Usage display: ON
+```
+
+This helps monitor API costs during development and testing.
 
 ---
 
@@ -357,5 +441,10 @@ Try being more specific in your query. The RAG system uses semantic matching, so
 ## Cost Considerations
 
 - **Embedding (one-time):** ~$0.002 for 421 documents using `text-embedding-3-small`
-- **Chat queries:** Standard DeepSeek API pricing per token
-- **Re-ingestion:** Only needed when documentation changes
+- **Chat queries:** DeepSeek API pricing:
+  - Input (cache hit): $0.028 / 1M tokens
+  - Input (cache miss): $0.28 / 1M tokens
+  - Output: $0.42 / 1M tokens
+- **Re-ingestion:** Only needed when documentation changes (~30 seconds, ~$0.002)
+
+Use `/usage` to monitor token consumption and costs in real-time.

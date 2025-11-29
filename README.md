@@ -318,6 +318,18 @@ Cost: 84,200 / 1,000,000 × $0.02 = ~$0.002
 
 One-time cost is negligible. Re-embedding after updates is cheap.
 
+### Adding New Documents
+
+To add new documentation files:
+
+1. Place the file in the appropriate folder based on type:
+   - `knowledge-materials/javadoc/bookmap-core-api/` - Core API javadocs
+   - `knowledge-materials/javadoc/bookmap-simplified-api-.../` - Simplified API javadocs
+   - `knowledge-materials/guides/` - Tutorial guides
+   - `knowledge-materials/examples/` - Code examples
+
+2. Run `/ingest` in the chatbot to rebuild embeddings (~30 seconds, ~$0.002)
+
 ### Batch Embedding
 
 ```java
