@@ -125,7 +125,10 @@ Configured via Javalin's bundled CORS plugin for `http://localhost:5173` and `ht
 
 ---
 
-## Phase 2: SvelteKit 5 Frontend Setup
+## Phase 2: SvelteKit 5 Frontend Setup ✅ COMPLETED
+
+> **Status:** Implemented on branch `feature/phase1-http-api`
+> **Components:** All basic UI components created with Svelte 5 runes
 
 ### Project Initialization
 
@@ -924,12 +927,12 @@ For production, the SvelteKit build output can be served by the Java backend:
 3. ✅ **Phase 1.3** - Implement `/api/chat` (non-streaming) endpoint
 4. ✅ **Phase 1.4** - Implement `/api/chat/stream` (SSE) endpoint
 5. ✅ **Phase 1.5** - Add settings and RAG endpoints
-6. **Phase 2.1** - Initialize SvelteKit project with dependencies
-7. **Phase 2.2** - Create shared state store with runes
-8. **Phase 2.3** - Build basic chat UI (messages + input)
-9. **Phase 3.1** - Integrate non-streaming chat
-10. **Phase 3.2** - Integrate SSE streaming with sveltekit-sse
-11. **Phase 4.1** - Add sidebar with settings controls
+6. ✅ **Phase 2.1** - Initialize SvelteKit project with dependencies
+7. ✅ **Phase 2.2** - Create shared state store with runes
+8. ✅ **Phase 2.3** - Build basic chat UI (messages + input)
+9. ✅ **Phase 3.1** - Integrate non-streaming chat
+10. ✅ **Phase 3.2** - Integrate SSE streaming with native fetch
+11. ✅ **Phase 4.1** - Add sidebar with settings controls
 12. **Phase 4.2** - Polish UI, add markdown rendering
 13. **Phase 5.1** - Testing and bug fixes
 14. **Phase 5.2** - Production build configuration
