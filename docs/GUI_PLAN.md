@@ -27,31 +27,34 @@ This document outlines the plan to create a modern web GUI for the existing Java
 
 ---
 
-## Phase 1: Java Backend HTTP API
+## Phase 1: Java Backend HTTP API ✅ COMPLETED
+
+> **Status:** Implemented on branch `feature/phase1-http-api`
+> **Commit:** `aa31215` - feat: Add HTTP API backend with Javalin (Phase 1)
 
 ### Objective
 
 Expose the existing `DeepSeekChatbot` functionality via REST endpoints and Server-Sent Events (SSE) for streaming.
 
-### Dependencies to Add (pom.xml)
+### Dependencies Added (pom.xml)
 
 ```xml
 <!-- Javalin HTTP Server -->
 <dependency>
     <groupId>io.javalin</groupId>
     <artifactId>javalin</artifactId>
-    <version>6.7.0</version>
+    <version>6.4.0</version>
 </dependency>
 
 <!-- Jackson for JSON -->
 <dependency>
     <groupId>com.fasterxml.jackson.core</groupId>
     <artifactId>jackson-databind</artifactId>
-    <version>2.20.1</version>
+    <version>2.18.2</version>
 </dependency>
 ```
 
-### API Endpoints
+### API Endpoints (All Implemented)
 
 | Method | Path | Description | Request Body | Response |
 |--------|------|-------------|--------------|----------|
@@ -64,11 +67,11 @@ Expose the existing `DeepSeekChatbot` functionality via REST endpoints and Serve
 | `POST` | `/api/history/clear` | Clear chat memory | - | `{ "success": true }` |
 | `GET` | `/api/health` | Health check | - | `{ "status": "ok" }` |
 
-### New Java Classes
+### Java Classes Created
 
 ```
 src/main/java/com/example/chatbot/
-├── DeepSeekChatbot.java          (existing - refactor to remove main())
+├── DeepSeekChatbot.java          (existing - added HTTP API methods)
 ├── server/
 │   ├── ChatbotServer.java        (Javalin app entry point)
 │   ├── ChatController.java       (Chat endpoints)
@@ -76,41 +79,49 @@ src/main/java/com/example/chatbot/
 │   └── dto/
 │       ├── ChatRequest.java
 │       ├── ChatResponse.java
-│       └── SettingsDto.java
+│       ├── ChatResult.java
+│       ├── SettingsDto.java
+│       └── TokenUsage.java
 ```
 
-### SSE Streaming Implementation
+### How to Run the Server
 
-```java
-// ChatController.java
-app.post("/api/chat/stream", ctx -> {
-    ctx.contentType("text/event-stream");
-    ctx.header("Cache-Control", "no-cache");
-    ctx.header("Connection", "keep-alive");
+```bash
+# Start the HTTP server (uses -Pserver profile)
+mvn exec:java -Pserver
 
-    ChatRequest request = ctx.bodyAsClass(ChatRequest.class);
+# Server runs on http://localhost:8080
+```
 
-    chatbot.chatStreamingWithCallback(request.getMessage(),
-        token -> ctx.sse().sendEvent("token", token),
-        response -> {
-            ctx.sse().sendEvent("done", response.usage());
-            ctx.sse().close();
-        }
-    );
-});
+### Test Commands
+
+```bash
+# Health check
+curl http://localhost:8080/api/health
+
+# Get settings
+curl http://localhost:8080/api/settings
+
+# Send chat message
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+
+# Send streaming chat message
+curl -X POST http://localhost:8080/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+
+# Toggle RAG
+curl -X POST http://localhost:8080/api/rag/toggle
+
+# Clear history
+curl -X POST http://localhost:8080/api/history/clear
 ```
 
 ### CORS Configuration
 
-```java
-app.before(ctx -> {
-    ctx.header("Access-Control-Allow-Origin", "http://localhost:5173");
-    ctx.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    ctx.header("Access-Control-Allow-Headers", "Content-Type");
-});
-
-app.options("/*", ctx -> ctx.status(200));
-```
+Configured via Javalin's bundled CORS plugin for `http://localhost:5173` and `http://127.0.0.1:5173`.
 
 ---
 
@@ -908,11 +919,11 @@ For production, the SvelteKit build output can be served by the Java backend:
 
 ## Implementation Order
 
-1. **Phase 1.1** - Add Javalin dependency to pom.xml
-2. **Phase 1.2** - Create `ChatbotServer.java` with basic `/api/health` endpoint
-3. **Phase 1.3** - Implement `/api/chat` (non-streaming) endpoint
-4. **Phase 1.4** - Implement `/api/chat/stream` (SSE) endpoint
-5. **Phase 1.5** - Add settings and RAG endpoints
+1. ✅ **Phase 1.1** - Add Javalin dependency to pom.xml
+2. ✅ **Phase 1.2** - Create `ChatbotServer.java` with basic `/api/health` endpoint
+3. ✅ **Phase 1.3** - Implement `/api/chat` (non-streaming) endpoint
+4. ✅ **Phase 1.4** - Implement `/api/chat/stream` (SSE) endpoint
+5. ✅ **Phase 1.5** - Add settings and RAG endpoints
 6. **Phase 2.1** - Initialize SvelteKit project with dependencies
 7. **Phase 2.2** - Create shared state store with runes
 8. **Phase 2.3** - Build basic chat UI (messages + input)
