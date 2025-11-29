@@ -20,11 +20,16 @@ import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.query.Query;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 
+import com.example.chatbot.server.dto.ChatResult;
+import dev.langchain4j.model.chat.response.ChatResponseMetadata;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -485,6 +490,164 @@ public class DeepSeekChatbot {
 
     public double getTemperature() {
         return temperature;
+    }
+
+    public boolean isShowUsage() {
+        return showUsage;
+    }
+
+    public void setStreamingEnabled(boolean enabled) {
+        this.streamingEnabled = enabled;
+    }
+
+    public void setShowUsage(boolean showUsage) {
+        this.showUsage = showUsage;
+    }
+
+    /**
+     * Chat with metadata returned (for HTTP API).
+     */
+    public ChatResult chatWithMetadata(String userMessage) {
+        chatMemory.add(UserMessage.from(userMessage));
+        ChatResponse response = chatWithRetry();
+        AiMessage aiMessage = response.aiMessage();
+        chatMemory.add(aiMessage);
+        return new ChatResult(aiMessage.text(), response.metadata());
+    }
+
+    /**
+     * Chat with RAG and metadata returned (for HTTP API).
+     */
+    public ChatResult chatWithRagAndMetadata(String userMessage) {
+        if (contentRetriever == null) {
+            return chatWithMetadata(userMessage);
+        }
+
+        String augmentedMessage = buildRagContext(userMessage);
+        if (augmentedMessage == null) {
+            return chatWithMetadata(userMessage);
+        }
+
+        chatMemory.add(UserMessage.from(augmentedMessage));
+        ChatResponse response = chatWithRetry();
+        AiMessage aiMessage = response.aiMessage();
+        chatMemory.add(aiMessage);
+        return new ChatResult(aiMessage.text(), response.metadata());
+    }
+
+    /**
+     * Streaming chat with callbacks (for HTTP SSE).
+     */
+    public void chatStreamingCallback(String userMessage,
+                                      Consumer<String> onToken,
+                                      BiConsumer<String, ChatResponseMetadata> onComplete,
+                                      Consumer<Throwable> onError) {
+        chatMemory.add(UserMessage.from(userMessage));
+        StringBuilder fullResponse = new StringBuilder();
+
+        streamingChatModel.chat(chatMemory.messages(), new StreamingChatResponseHandler() {
+            @Override
+            public void onPartialResponse(String partialResponse) {
+                fullResponse.append(partialResponse);
+                onToken.accept(partialResponse);
+            }
+
+            @Override
+            public void onCompleteResponse(ChatResponse response) {
+                chatMemory.add(response.aiMessage());
+                onComplete.accept(fullResponse.toString(), response.metadata());
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                onError.accept(error);
+            }
+        });
+    }
+
+    /**
+     * Streaming chat with RAG and callbacks (for HTTP SSE).
+     */
+    public void chatWithRagStreamingCallback(String userMessage,
+                                             Consumer<String> onToken,
+                                             BiConsumer<String, ChatResponseMetadata> onComplete,
+                                             Consumer<Throwable> onError) {
+        if (contentRetriever == null) {
+            chatStreamingCallback(userMessage, onToken, onComplete, onError);
+            return;
+        }
+
+        String augmentedMessage = buildRagContext(userMessage);
+        if (augmentedMessage == null) {
+            chatStreamingCallback(userMessage, onToken, onComplete, onError);
+            return;
+        }
+
+        chatMemory.add(UserMessage.from(augmentedMessage));
+        StringBuilder fullResponse = new StringBuilder();
+
+        streamingChatModel.chat(chatMemory.messages(), new StreamingChatResponseHandler() {
+            @Override
+            public void onPartialResponse(String partialResponse) {
+                fullResponse.append(partialResponse);
+                onToken.accept(partialResponse);
+            }
+
+            @Override
+            public void onCompleteResponse(ChatResponse response) {
+                chatMemory.add(response.aiMessage());
+                onComplete.accept(fullResponse.toString(), response.metadata());
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                onError.accept(error);
+            }
+        });
+    }
+
+    /**
+     * Toggle RAG and return new state (for HTTP API).
+     */
+    public boolean toggleRagAndReturn() {
+        if (contentRetriever == null) {
+            return false;
+        }
+        ragEnabled = !ragEnabled;
+        return ragEnabled;
+    }
+
+    /**
+     * Run ingestion and return document count (for HTTP API).
+     */
+    public int runIngestionAndReturnCount() {
+        String openAiApiKey = System.getenv("OPENAI_API_KEY");
+        if (openAiApiKey == null || openAiApiKey.isEmpty()) {
+            throw new RuntimeException("OPENAI_API_KEY not set. Cannot run ingestion.");
+        }
+
+        Path knowledgePath = Path.of(KNOWLEDGE_PATH);
+        if (!Files.exists(knowledgePath)) {
+            throw new RuntimeException("Knowledge directory not found: " + KNOWLEDGE_PATH);
+        }
+
+        try {
+            Files.createDirectories(Path.of("data"));
+
+            BookmapIngestionService ingestionService =
+                    BookmapIngestionService.withOpenAi(openAiApiKey);
+            int count = ingestionService.ingest(knowledgePath);
+            ingestionService.saveToFile(EMBEDDINGS_PATH);
+
+            this.embeddingModel = ingestionService.getEmbeddingModel();
+            this.contentRetriever = new BookmapContentRetriever()
+                    .create(ingestionService.getEmbeddingStore(), embeddingModel, 5, 0.6);
+            ragEnabled = true;
+
+            return count;
+        } catch (Exception e) {
+            throw new RuntimeException("Ingestion failed: " + e.getMessage(), e);
+        }
     }
 
     public static void main(String[] args) {
