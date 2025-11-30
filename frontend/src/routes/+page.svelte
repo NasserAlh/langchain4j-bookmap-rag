@@ -22,7 +22,8 @@
 		clearHistory,
 		checkHealth
 	} from '$lib/api';
-	import type { Settings } from '$lib/types';
+	import type { Settings, ApiError } from '$lib/types';
+	import { ChatApiError } from '$lib/api';
 	import { onMount } from 'svelte';
 
 	// Check backend health on mount
@@ -82,7 +83,16 @@
 					setMessageUsage(assistantId, response.usage);
 				}
 			} catch (error) {
-				setMessageError(assistantId, error instanceof Error ? error.message : 'Unknown error');
+				if (error instanceof ChatApiError) {
+					setMessageError(assistantId, error.apiError);
+				} else {
+					setMessageError(assistantId, {
+						errorId: 'unknown',
+						code: 'UNKNOWN',
+						message: error instanceof Error ? error.message : 'Unknown error',
+						timestamp: Date.now()
+					});
+				}
 			} finally {
 				setLoading(false);
 				chatState.currentAssistantId = null;
@@ -132,7 +142,7 @@
 	const isDisabled = $derived(chatState.isStreaming || chatState.isLoading);
 </script>
 
-<div class="h-screen flex bg-gray-50">
+<div class="h-screen flex bg-gray-50 dark:bg-slate-950">
 	<Sidebar
 		settings={chatState.settings}
 		connectionStatus={chatState.connectionStatus}

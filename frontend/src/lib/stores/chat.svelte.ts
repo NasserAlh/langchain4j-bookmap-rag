@@ -1,4 +1,4 @@
-import type { Message, Settings, TokenUsage, ConnectionStatus } from '$lib/types';
+import type { Message, Settings, TokenUsage, ConnectionStatus, ApiError } from '$lib/types';
 
 // Reactive state using Svelte 5 $state rune
 export const chatState = $state({
@@ -44,7 +44,7 @@ export function setMessageUsage(id: string, usage: TokenUsage) {
 	if (msg) msg.usage = usage;
 }
 
-export function setMessageError(id: string, error: string) {
+export function setMessageError(id: string, error: ApiError) {
 	const msg = chatState.messages.find((m) => m.id === id);
 	if (msg) msg.error = error;
 }

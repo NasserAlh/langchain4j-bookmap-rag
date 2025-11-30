@@ -40,7 +40,7 @@
 	}
 </script>
 
-<form onsubmit={handleSubmit} class="flex gap-2 p-4 border-t border-gray-200 bg-white">
+<form onsubmit={handleSubmit} class="flex gap-2 p-4 border-t border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900">
 	<textarea
 		bind:this={textareaEl}
 		bind:value={inputValue}
@@ -49,7 +49,7 @@
 		placeholder="Type your message..."
 		rows="1"
 		{disabled}
-		class="flex-1 resize-none rounded-xl border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+		class="flex-1 resize-none rounded-xl border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 disabled:cursor-not-allowed"
 	></textarea>
 	<button
 		type="submit"

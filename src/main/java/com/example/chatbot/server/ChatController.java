@@ -4,13 +4,13 @@ import com.example.chatbot.DeepSeekChatbot;
 import com.example.chatbot.server.dto.ChatRequest;
 import com.example.chatbot.server.dto.ChatResponse;
 import com.example.chatbot.server.dto.ChatResult;
+import com.example.chatbot.server.dto.ErrorResponse;
 import com.example.chatbot.server.dto.TokenUsage;
 import dev.langchain4j.model.chat.response.ChatResponseMetadata;
 import io.javalin.http.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Map;
+import org.slf4j.MDC;
 
 public class ChatController {
 
@@ -30,7 +30,9 @@ public class ChatController {
         ChatRequest request = ctx.bodyAsClass(ChatRequest.class);
 
         if (request.getMessage() == null || request.getMessage().trim().isEmpty()) {
-            ctx.status(400).json(Map.of("error", "Message is required"));
+            ErrorResponse error = ErrorResponse.validation("Message is required");
+            log.warn("[{}] Validation error: empty message", error.getErrorId());
+            ctx.status(400).json(error);
             return;
         }
 
@@ -48,9 +50,44 @@ public class ChatController {
             ChatResponse response = new ChatResponse(result.content(), usage);
             ctx.json(response);
         } catch (Exception e) {
-            log.error("Chat request failed: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of("error", e.getMessage()));
+            ErrorResponse error = categorizeError(e);
+            MDC.put("errorId", error.getErrorId());
+            log.error("[{}] Chat request failed: {} - {}", error.getErrorId(), error.getCode(), e.getMessage(), e);
+            MDC.remove("errorId");
+            ctx.status(500).json(error);
         }
+    }
+
+    /**
+     * Categorizes exceptions into appropriate error codes for better debugging
+     */
+    private ErrorResponse categorizeError(Exception e) {
+        String message = e.getMessage() != null ? e.getMessage() : "Unknown error";
+        String lowerMessage = message.toLowerCase();
+
+        // Rate limiting
+        if (lowerMessage.contains("rate limit") || lowerMessage.contains("429") || lowerMessage.contains("too many requests")) {
+            return ErrorResponse.rateLimited();
+        }
+
+        // Authentication issues
+        if (lowerMessage.contains("401") || lowerMessage.contains("unauthorized") || lowerMessage.contains("invalid api key")) {
+            return ErrorResponse.authFailed();
+        }
+
+        // Model/API errors
+        if (lowerMessage.contains("api") || lowerMessage.contains("model") || lowerMessage.contains("deepseek")
+            || lowerMessage.contains("openai") || lowerMessage.contains("timeout")) {
+            return ErrorResponse.modelError("Failed to get response from AI model", e);
+        }
+
+        // RAG-related errors
+        if (lowerMessage.contains("embedding") || lowerMessage.contains("vector") || lowerMessage.contains("document")) {
+            return ErrorResponse.ragError("Document search failed", e);
+        }
+
+        // Default: internal error
+        return ErrorResponse.internal(e);
     }
 
     public DeepSeekChatbot getChatbot() {

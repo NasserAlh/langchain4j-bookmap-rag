@@ -1,10 +1,18 @@
+export interface ApiError {
+	errorId: string;
+	code: string;
+	message: string;
+	details?: string;
+	timestamp: number;
+}
+
 export interface Message {
 	id: string;
 	role: 'user' | 'assistant';
 	content: string;
 	timestamp: number;
 	usage?: TokenUsage;
-	error?: string;
+	error?: ApiError;
 }
 
 export interface TokenUsage {

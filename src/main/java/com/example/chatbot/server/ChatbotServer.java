@@ -2,11 +2,13 @@ package com.example.chatbot.server;
 
 import com.example.chatbot.DeepSeekChatbot;
 import com.example.chatbot.server.dto.ChatRequest;
+import com.example.chatbot.server.dto.ErrorResponse;
 import com.example.chatbot.server.dto.TokenUsage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.Javalin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.io.IOException;
 import java.util.Map;
@@ -54,7 +56,9 @@ public class ChatbotServer {
             ChatRequest request = ctx.bodyAsClass(ChatRequest.class);
 
             if (request.getMessage() == null || request.getMessage().trim().isEmpty()) {
-                ctx.status(400).json(Map.of("error", "Message is required"));
+                ErrorResponse error = ErrorResponse.validation("Message is required");
+                log.warn("[{}] Validation error: empty message", error.getErrorId());
+                ctx.status(400).json(error);
                 return;
             }
 
@@ -103,8 +107,13 @@ public class ChatbotServer {
                     // onError
                     error -> {
                         try {
-                            outputStream.write(("event: error\ndata: \"" + error.getMessage() + "\"\n\n").getBytes());
+                            ErrorResponse errorResponse = categorizeStreamingError(error);
+                            MDC.put("errorId", errorResponse.getErrorId());
+                            log.error("[{}] Streaming error: {} - {}", errorResponse.getErrorId(), errorResponse.getCode(), error.getMessage(), error);
+                            String errorJson = objectMapper.writeValueAsString(errorResponse);
+                            outputStream.write(("event: error\ndata: " + errorJson + "\n\n").getBytes());
                             outputStream.flush();
+                            MDC.remove("errorId");
                         } catch (IOException e) {
                             log.error("Failed to send error event: {}", e.getMessage());
                         }
@@ -116,9 +125,13 @@ public class ChatbotServer {
                 future.join();
 
             } catch (Exception e) {
-                log.error("SSE streaming error: {}", e.getMessage(), e);
+                ErrorResponse errorResponse = categorizeStreamingError(e);
+                MDC.put("errorId", errorResponse.getErrorId());
+                log.error("[{}] SSE streaming error: {} - {}", errorResponse.getErrorId(), errorResponse.getCode(), e.getMessage(), e);
+                MDC.remove("errorId");
                 try {
-                    outputStream.write(("event: error\ndata: \"Internal server error\"\n\n").getBytes());
+                    String errorJson = objectMapper.writeValueAsString(errorResponse);
+                    outputStream.write(("event: error\ndata: " + errorJson + "\n\n").getBytes());
                     outputStream.flush();
                 } catch (IOException ignored) {}
             }
@@ -137,13 +150,37 @@ public class ChatbotServer {
 
         // Global exception handler
         javalin.exception(Exception.class, (e, ctx) -> {
-            log.error("Request failed: {}", e.getMessage(), e);
-            ctx.status(500).json(Map.of(
-                "error", e.getMessage() != null ? e.getMessage() : "Internal server error"
-            ));
+            ErrorResponse error = ErrorResponse.internal(e);
+            MDC.put("errorId", error.getErrorId());
+            log.error("[{}] Unhandled exception: {} - {}", error.getErrorId(), error.getCode(), e.getMessage(), e);
+            MDC.remove("errorId");
+            ctx.status(500).json(error);
         });
 
         return javalin;
+    }
+
+    /**
+     * Categorizes streaming exceptions into appropriate error codes
+     */
+    private ErrorResponse categorizeStreamingError(Throwable e) {
+        String message = e.getMessage() != null ? e.getMessage() : "Unknown error";
+        String lowerMessage = message.toLowerCase();
+
+        if (lowerMessage.contains("rate limit") || lowerMessage.contains("429") || lowerMessage.contains("too many requests")) {
+            return ErrorResponse.rateLimited();
+        }
+        if (lowerMessage.contains("401") || lowerMessage.contains("unauthorized") || lowerMessage.contains("invalid api key")) {
+            return ErrorResponse.authFailed();
+        }
+        if (lowerMessage.contains("api") || lowerMessage.contains("model") || lowerMessage.contains("deepseek")
+            || lowerMessage.contains("openai") || lowerMessage.contains("timeout")) {
+            return ErrorResponse.modelError("Failed to get response from AI model", e);
+        }
+        if (lowerMessage.contains("embedding") || lowerMessage.contains("vector") || lowerMessage.contains("document")) {
+            return ErrorResponse.ragError("Document search failed", e);
+        }
+        return ErrorResponse.internal(e);
     }
 
     private String truncate(String s, int maxLen) {
