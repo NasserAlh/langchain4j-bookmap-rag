@@ -33,6 +33,7 @@ public class ChatbotServer {
     private Javalin createApp() {
         Javalin javalin = Javalin.create(config -> {
             config.http.asyncTimeout = 300_000L; // 5 minutes for SSE
+
             config.bundledPlugins.enableCors(cors -> {
                 cors.addRule(rule -> {
                     rule.allowHost("http://localhost:5173", "http://127.0.0.1:5173");
@@ -51,7 +52,7 @@ public class ChatbotServer {
         // Chat endpoints
         javalin.post("/api/chat", chatController::chat);
 
-        // Streaming chat endpoint - handle SSE manually
+        // Streaming chat endpoint - handle SSE with direct servlet response
         javalin.post("/api/chat/stream", ctx -> {
             ChatRequest request = ctx.bodyAsClass(ChatRequest.class);
 
@@ -65,13 +66,25 @@ public class ChatbotServer {
             log.info("Received streaming chat request: {}", truncate(request.getMessage(), 50));
             log.info("RAG enabled: {}", chatbot.isRagEnabled());
 
-            // Set SSE headers
-            ctx.contentType("text/event-stream");
-            ctx.header("Cache-Control", "no-cache");
-            ctx.header("Connection", "keep-alive");
-            ctx.header("X-Accel-Buffering", "no"); // Disable nginx buffering
+            // Get the raw servlet response to bypass Javalin's buffering
+            var servletResponse = ctx.res();
 
-            var outputStream = ctx.outputStream();
+            // Set SSE headers BEFORE getting output stream
+            servletResponse.setContentType("text/event-stream");
+            servletResponse.setCharacterEncoding("UTF-8");
+            servletResponse.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+            servletResponse.setHeader("Pragma", "no-cache");
+            servletResponse.setHeader("Expires", "0");
+            servletResponse.setHeader("Connection", "keep-alive");
+            servletResponse.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+
+            // Disable buffering at servlet level
+            servletResponse.setBufferSize(0);
+
+            // Flush headers immediately to establish SSE connection
+            servletResponse.flushBuffer();
+
+            var outputStream = servletResponse.getOutputStream();
 
             CompletableFuture<Void> future = new CompletableFuture<>();
 
@@ -83,12 +96,8 @@ public class ChatbotServer {
                         // onToken
                         token -> {
                             try {
-                                String escapedToken = token
-                                    .replace("\\", "\\\\")
-                                    .replace("\n", "\\n")
-                                    .replace("\r", "\\r")
-                                    .replace("\"", "\\\"");
-                                outputStream.write(("event: token\ndata: \"" + escapedToken + "\"\n\n").getBytes());
+                                String escapedToken = escapeForSse(token);
+                                outputStream.write(("event: token\ndata: \"" + escapedToken + "\"\n\n").getBytes("UTF-8"));
                                 outputStream.flush();
                             } catch (IOException e) {
                                 log.warn("Failed to send token: {}", e.getMessage());
@@ -99,7 +108,7 @@ public class ChatbotServer {
                             try {
                                 TokenUsage usage = ChatController.extractUsage(metadata);
                                 String usageJson = objectMapper.writeValueAsString(usage);
-                                outputStream.write(("event: done\ndata: " + usageJson + "\n\n").getBytes());
+                                outputStream.write(("event: done\ndata: " + usageJson + "\n\n").getBytes("UTF-8"));
                                 outputStream.flush();
                                 future.complete(null);
                             } catch (IOException e) {
@@ -114,7 +123,7 @@ public class ChatbotServer {
                                 MDC.put("errorId", errorResponse.getErrorId());
                                 log.error("[{}] Streaming error: {} - {}", errorResponse.getErrorId(), errorResponse.getCode(), error.getMessage(), error);
                                 String errorJson = objectMapper.writeValueAsString(errorResponse);
-                                outputStream.write(("event: error\ndata: " + errorJson + "\n\n").getBytes());
+                                outputStream.write(("event: error\ndata: " + errorJson + "\n\n").getBytes("UTF-8"));
                                 outputStream.flush();
                                 MDC.remove("errorId");
                             } catch (IOException e) {
@@ -126,50 +135,46 @@ public class ChatbotServer {
                 } else {
                     chatbot.chatStreamingCallback(
                         request.getMessage(),
-                    // onToken
-                    token -> {
-                        try {
-                            String escapedToken = token
-                                .replace("\\", "\\\\")
-                                .replace("\n", "\\n")
-                                .replace("\r", "\\r")
-                                .replace("\"", "\\\"");
-                            outputStream.write(("event: token\ndata: \"" + escapedToken + "\"\n\n").getBytes());
-                            outputStream.flush();
-                        } catch (IOException e) {
-                            log.warn("Failed to send token: {}", e.getMessage());
+                        // onToken
+                        token -> {
+                            try {
+                                String escapedToken = escapeForSse(token);
+                                outputStream.write(("event: token\ndata: \"" + escapedToken + "\"\n\n").getBytes("UTF-8"));
+                                outputStream.flush();
+                            } catch (IOException e) {
+                                log.warn("Failed to send token: {}", e.getMessage());
+                            }
+                        },
+                        // onComplete
+                        (fullResponse, metadata) -> {
+                            try {
+                                TokenUsage usage = ChatController.extractUsage(metadata);
+                                String usageJson = objectMapper.writeValueAsString(usage);
+                                outputStream.write(("event: done\ndata: " + usageJson + "\n\n").getBytes("UTF-8"));
+                                outputStream.flush();
+                                future.complete(null);
+                            } catch (IOException e) {
+                                log.warn("Failed to send completion event: {}", e.getMessage());
+                                future.completeExceptionally(e);
+                            }
+                        },
+                        // onError
+                        error -> {
+                            try {
+                                ErrorResponse errorResponse = categorizeStreamingError(error);
+                                MDC.put("errorId", errorResponse.getErrorId());
+                                log.error("[{}] Streaming error: {} - {}", errorResponse.getErrorId(), errorResponse.getCode(), error.getMessage(), error);
+                                String errorJson = objectMapper.writeValueAsString(errorResponse);
+                                outputStream.write(("event: error\ndata: " + errorJson + "\n\n").getBytes("UTF-8"));
+                                outputStream.flush();
+                                MDC.remove("errorId");
+                            } catch (IOException e) {
+                                log.error("Failed to send error event: {}", e.getMessage());
+                            }
+                            future.completeExceptionally(error);
                         }
-                    },
-                    // onComplete
-                    (fullResponse, metadata) -> {
-                        try {
-                            TokenUsage usage = ChatController.extractUsage(metadata);
-                            String usageJson = objectMapper.writeValueAsString(usage);
-                            outputStream.write(("event: done\ndata: " + usageJson + "\n\n").getBytes());
-                            outputStream.flush();
-                            future.complete(null);
-                        } catch (IOException e) {
-                            log.warn("Failed to send completion event: {}", e.getMessage());
-                            future.completeExceptionally(e);
-                        }
-                    },
-                    // onError
-                    error -> {
-                        try {
-                            ErrorResponse errorResponse = categorizeStreamingError(error);
-                            MDC.put("errorId", errorResponse.getErrorId());
-                            log.error("[{}] Streaming error: {} - {}", errorResponse.getErrorId(), errorResponse.getCode(), error.getMessage(), error);
-                            String errorJson = objectMapper.writeValueAsString(errorResponse);
-                            outputStream.write(("event: error\ndata: " + errorJson + "\n\n").getBytes());
-                            outputStream.flush();
-                            MDC.remove("errorId");
-                        } catch (IOException e) {
-                            log.error("Failed to send error event: {}", e.getMessage());
-                        }
-                        future.completeExceptionally(error);
-                    }
-                );
-                } // end else (non-RAG streaming)
+                    );
+                }
 
                 // Wait for streaming to complete
                 future.join();
@@ -181,7 +186,7 @@ public class ChatbotServer {
                 MDC.remove("errorId");
                 try {
                     String errorJson = objectMapper.writeValueAsString(errorResponse);
-                    outputStream.write(("event: error\ndata: " + errorJson + "\n\n").getBytes());
+                    outputStream.write(("event: error\ndata: " + errorJson + "\n\n").getBytes("UTF-8"));
                     outputStream.flush();
                 } catch (IOException ignored) {}
             }
@@ -235,6 +240,19 @@ public class ChatbotServer {
 
     private String truncate(String s, int maxLen) {
         return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
+    }
+
+    /**
+     * Escapes a string for SSE data field.
+     * SSE data cannot contain newlines, so we escape them.
+     */
+    private String escapeForSse(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 
     public void start() {
