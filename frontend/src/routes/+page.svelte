@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChatWindow, ChatInput, Sidebar } from '$lib/components';
+	import { ChatWindow, ChatInput, Sidebar, Toast } from '$lib/components';
 	import {
 		chatState,
 		addMessage,
@@ -13,6 +13,12 @@
 		setLoading
 	} from '$lib/stores/chat.svelte';
 	import {
+		notifyError,
+		notifySuccess,
+		notifyWarning,
+		notifyInfo
+	} from '$lib/stores/notifications.svelte';
+	import {
 		sendMessage,
 		sendStreamingMessage,
 		getSettings,
@@ -25,6 +31,14 @@
 	import type { Settings, ApiError } from '$lib/types';
 	import { ChatApiError } from '$lib/api';
 	import { onMount } from 'svelte';
+	import { PanelLeft } from 'lucide-svelte';
+
+	// Sidebar collapse state
+	let sidebarCollapsed = $state(false);
+
+	function toggleSidebar() {
+		sidebarCollapsed = !sidebarCollapsed;
+	}
 
 	// Check backend health on mount
 	onMount(async () => {
@@ -37,10 +51,11 @@
 				const settings = await getSettings();
 				updateSettings(settings);
 			} catch {
-				// Use defaults if settings fetch fails
+				notifyWarning('Could not load settings. Using defaults.');
 			}
 		} else {
 			setConnectionStatus('error');
+			notifyError('Backend not reachable. Is the server running on port 8080?');
 		}
 	});
 
@@ -55,9 +70,11 @@
 		if (chatState.settings.streamingEnabled) {
 			// Streaming mode
 			setStreaming(true);
+			setConnectionStatus('connecting');
 			await sendStreamingMessage(
 				content,
 				(token) => {
+					setConnectionStatus('connected');
 					appendToMessage(assistantId, token);
 				},
 				(usage) => {
@@ -65,12 +82,28 @@
 						setMessageUsage(assistantId, usage);
 					}
 					setStreaming(false);
+					setConnectionStatus('connected');
 					chatState.currentAssistantId = null;
 				},
-				(error) => {
-					setMessageError(assistantId, error);
+				(error, partialContent) => {
+					// Check if we have partial content (interrupted response)
+					const hasPartialContent = partialContent && partialContent.length > 0;
+					setMessageError(assistantId, error, hasPartialContent);
 					setStreaming(false);
+					setConnectionStatus('error');
 					chatState.currentAssistantId = null;
+
+					// Show toast for the error
+					if (hasPartialContent) {
+						notifyWarning('Response interrupted. Partial content preserved.');
+					} else {
+						notifyError(error.message, error.errorId, error.code);
+					}
+				},
+				(attempt, maxRetries) => {
+					// Retry notification
+					setConnectionStatus('reconnecting');
+					notifyInfo(`Connection lost. Retrying (${attempt}/${maxRetries})...`);
 				}
 			);
 		} else {
@@ -113,18 +146,19 @@
 		try {
 			const result = await toggleRag();
 			updateSettings({ ragEnabled: result.ragEnabled });
+			notifyInfo(result.ragEnabled ? 'RAG enabled' : 'RAG disabled');
 		} catch (error) {
-			console.error('Failed to toggle RAG:', error);
+			notifyError('Failed to toggle RAG');
 		}
 	}
 
 	async function handleIngestDocuments() {
+		notifyInfo('Indexing documents...');
 		try {
 			const result = await ingestDocuments();
-			// Could show a toast notification here
-			console.log(`Indexed ${result.documentsIndexed} documents`);
+			notifySuccess(`Indexed ${result.documentsIndexed} documents`);
 		} catch (error) {
-			console.error('Failed to ingest documents:', error);
+			notifyError('Failed to ingest documents');
 		}
 	}
 
@@ -132,9 +166,9 @@
 		try {
 			await clearHistory();
 			clearMessages();
+			notifySuccess('Chat history cleared');
 		} catch (error) {
-			console.error('Failed to clear history:', error);
-			// Clear local messages anyway
+			notifyWarning('Backend clear failed, local history cleared');
 			clearMessages();
 		}
 	}
@@ -142,18 +176,53 @@
 	const isDisabled = $derived(chatState.isStreaming || chatState.isLoading);
 </script>
 
-<div class="h-screen flex bg-gray-50 dark:bg-slate-950">
-	<Sidebar
-		settings={chatState.settings}
-		connectionStatus={chatState.connectionStatus}
-		onSettingsChange={handleSettingsChange}
-		onToggleRag={handleToggleRag}
-		onIngestDocuments={handleIngestDocuments}
-		onClearHistory={handleClearHistory}
-	/>
+<!-- Toast notifications -->
+<Toast />
 
-	<main class="flex-1 flex flex-col">
-		<ChatWindow messages={chatState.messages} />
+<div class="h-screen flex bg-gray-50 dark:bg-slate-950">
+	<!-- Mobile sidebar toggle button -->
+	<button
+		onclick={toggleSidebar}
+		class="fixed top-4 left-4 z-40 p-2 rounded-lg bg-white dark:bg-slate-800 shadow-lg border border-gray-200 dark:border-slate-700 lg:hidden transition-transform duration-200"
+		class:translate-x-64={!sidebarCollapsed}
+		aria-label="Toggle sidebar"
+	>
+		<PanelLeft class="w-5 h-5 text-gray-600 dark:text-slate-400" />
+	</button>
+
+	<!-- Backdrop for mobile -->
+	{#if !sidebarCollapsed}
+		<button
+			class="fixed inset-0 bg-black/30 z-30 lg:hidden"
+			onclick={toggleSidebar}
+			aria-label="Close sidebar"
+		></button>
+	{/if}
+
+	<!-- Sidebar with mobile slide -->
+	<div
+		class="fixed lg:relative z-40 h-full transition-transform duration-300 ease-in-out lg:translate-x-0"
+		class:-translate-x-full={sidebarCollapsed}
+	>
+		<Sidebar
+			settings={chatState.settings}
+			connectionStatus={chatState.connectionStatus}
+			onSettingsChange={handleSettingsChange}
+			onToggleRag={handleToggleRag}
+			onIngestDocuments={handleIngestDocuments}
+			onClearHistory={handleClearHistory}
+			collapsed={sidebarCollapsed}
+			onToggleCollapse={toggleSidebar}
+		/>
+	</div>
+
+	<main class="flex-1 flex flex-col min-w-0">
+		<ChatWindow
+			messages={chatState.messages}
+			isStreaming={chatState.isStreaming}
+			showUsage={chatState.settings.showUsage}
+			onSendSuggestion={handleSendMessage}
+		/>
 		<ChatInput onSend={handleSendMessage} disabled={isDisabled} />
 	</main>
 </div>

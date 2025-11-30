@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* highlight.js theme - GitHub Dark for code blocks */
+@import 'highlight.js/styles/github-dark.css';
+
 /* Custom styles */
 html, body {
 	height: 100%;
@@ -41,4 +44,77 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 
 ::-webkit-scrollbar {
 	width: 8px;
+}
+
+/* Range slider styling */
+input[type="range"] {
+	-webkit-appearance: none;
+	appearance: none;
+	background: transparent;
+	cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-track {
+	background: #e5e7eb;
+	height: 8px;
+	border-radius: 4px;
+}
+
+html.dark input[type="range"]::-webkit-slider-track {
+	background: #374151;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: #3b82f6;
+	border: 2px solid white;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+	margin-top: -5px;
+	transition: transform 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+	transform: scale(1.1);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+	transform: scale(0.95);
+}
+
+/* Firefox range slider */
+input[type="range"]::-moz-range-track {
+	background: #e5e7eb;
+	height: 8px;
+	border-radius: 4px;
+}
+
+html.dark input[type="range"]::-moz-range-track {
+	background: #374151;
+}
+
+input[type="range"]::-moz-range-thumb {
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: #3b82f6;
+	border: 2px solid white;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Focus visible for accessibility */
+input[type="range"]:focus-visible {
+	outline: none;
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+	box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* Smooth page transitions */
+* {
+	scroll-behavior: smooth;
 }

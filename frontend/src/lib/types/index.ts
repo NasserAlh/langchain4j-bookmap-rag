@@ -13,6 +13,7 @@ export interface Message {
 	timestamp: number;
 	usage?: TokenUsage;
 	error?: ApiError;
+	interrupted?: boolean; // True if response was cut off due to error
 }
 
 export interface TokenUsage {

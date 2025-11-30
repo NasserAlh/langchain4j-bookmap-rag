@@ -121,8 +121,10 @@ public class DeepSeekChatbot {
                     .modelName("text-embedding-3-small")
                     .build();
 
+            // Use higher minScore (0.7) to reduce irrelevant matches
+            // and more results (8) to get better coverage
             this.contentRetriever = new BookmapContentRetriever()
-                    .create(store, embeddingModel, 5, 0.6);
+                    .create(store, embeddingModel, 8, 0.7);
 
             ragEnabled = true;
             System.out.println("RAG initialized successfully.");
@@ -161,7 +163,7 @@ public class DeepSeekChatbot {
             // Re-initialize RAG with new embeddings
             this.embeddingModel = ingestionService.getEmbeddingModel();
             this.contentRetriever = new BookmapContentRetriever()
-                    .create(ingestionService.getEmbeddingStore(), embeddingModel, 5, 0.6);
+                    .create(ingestionService.getEmbeddingStore(), embeddingModel, 8, 0.7);
             ragEnabled = true;
 
             System.out.printf("Ingestion complete: %d documents indexed.%n", count);
@@ -373,7 +375,17 @@ public class DeepSeekChatbot {
         List<Content> relevantDocs = contentRetriever.retrieve(Query.from(userMessage));
 
         if (relevantDocs.isEmpty()) {
+            System.out.println("[RAG] No relevant documents found for query: " + userMessage);
             return null;
+        }
+
+        // Log retrieved documents for debugging
+        System.out.println("[RAG] Retrieved " + relevantDocs.size() + " documents:");
+        for (int i = 0; i < relevantDocs.size(); i++) {
+            TextSegment segment = relevantDocs.get(i).textSegment();
+            String source = segment.metadata().getString("source");
+            String preview = segment.text().substring(0, Math.min(100, segment.text().length())).replace("\n", " ");
+            System.out.printf("[RAG]   %d. %s: %s...%n", i + 1, source != null ? source : "unknown", preview);
         }
 
         String context = relevantDocs.stream()
@@ -382,15 +394,23 @@ public class DeepSeekChatbot {
                 .collect(Collectors.joining("\n\n---\n\n"));
 
         return """
-            Use the following Bookmap API documentation to answer the question.
-            If the documentation doesn't contain relevant information, say so.
-            Always provide code examples when relevant.
+            You are a technical assistant for Bookmap API documentation.
+
+            CRITICAL RULES:
+            1. ONLY use information that is EXPLICITLY stated in the documentation context below.
+            2. DO NOT invent, assume, or hallucinate any methods, fields, parameters, or behaviors.
+            3. If the documentation doesn't contain specific information, say "This is not documented in the provided context."
+            4. When showing code examples, ONLY use methods and signatures that appear in the documentation.
+            5. If you're uncertain whether something exists, say so explicitly.
+            6. Quote or reference the documentation directly when possible.
 
             ## Documentation Context:
             %s
 
-            ## Question:
+            ## User Question:
             %s
+
+            Remember: Only answer based on the documentation above. Do not make up information.
             """.formatted(context, userMessage);
     }
 
@@ -641,7 +661,7 @@ public class DeepSeekChatbot {
 
             this.embeddingModel = ingestionService.getEmbeddingModel();
             this.contentRetriever = new BookmapContentRetriever()
-                    .create(ingestionService.getEmbeddingStore(), embeddingModel, 5, 0.6);
+                    .create(ingestionService.getEmbeddingStore(), embeddingModel, 8, 0.7);
             ragEnabled = true;
 
             return count;

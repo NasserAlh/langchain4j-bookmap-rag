@@ -63,6 +63,7 @@ public class ChatbotServer {
             }
 
             log.info("Received streaming chat request: {}", truncate(request.getMessage(), 50));
+            log.info("RAG enabled: {}", chatbot.isRagEnabled());
 
             // Set SSE headers
             ctx.contentType("text/event-stream");
@@ -75,8 +76,56 @@ public class ChatbotServer {
             CompletableFuture<Void> future = new CompletableFuture<>();
 
             try {
-                chatbot.chatStreamingCallback(
-                    request.getMessage(),
+                // Use RAG-aware streaming if RAG is enabled
+                if (chatbot.isRagEnabled()) {
+                    chatbot.chatWithRagStreamingCallback(
+                        request.getMessage(),
+                        // onToken
+                        token -> {
+                            try {
+                                String escapedToken = token
+                                    .replace("\\", "\\\\")
+                                    .replace("\n", "\\n")
+                                    .replace("\r", "\\r")
+                                    .replace("\"", "\\\"");
+                                outputStream.write(("event: token\ndata: \"" + escapedToken + "\"\n\n").getBytes());
+                                outputStream.flush();
+                            } catch (IOException e) {
+                                log.warn("Failed to send token: {}", e.getMessage());
+                            }
+                        },
+                        // onComplete
+                        (fullResponse, metadata) -> {
+                            try {
+                                TokenUsage usage = ChatController.extractUsage(metadata);
+                                String usageJson = objectMapper.writeValueAsString(usage);
+                                outputStream.write(("event: done\ndata: " + usageJson + "\n\n").getBytes());
+                                outputStream.flush();
+                                future.complete(null);
+                            } catch (IOException e) {
+                                log.warn("Failed to send completion event: {}", e.getMessage());
+                                future.completeExceptionally(e);
+                            }
+                        },
+                        // onError
+                        error -> {
+                            try {
+                                ErrorResponse errorResponse = categorizeStreamingError(error);
+                                MDC.put("errorId", errorResponse.getErrorId());
+                                log.error("[{}] Streaming error: {} - {}", errorResponse.getErrorId(), errorResponse.getCode(), error.getMessage(), error);
+                                String errorJson = objectMapper.writeValueAsString(errorResponse);
+                                outputStream.write(("event: error\ndata: " + errorJson + "\n\n").getBytes());
+                                outputStream.flush();
+                                MDC.remove("errorId");
+                            } catch (IOException e) {
+                                log.error("Failed to send error event: {}", e.getMessage());
+                            }
+                            future.completeExceptionally(error);
+                        }
+                    );
+                } else {
+                    chatbot.chatStreamingCallback(
+                        request.getMessage(),
                     // onToken
                     token -> {
                         try {
@@ -120,6 +169,7 @@ public class ChatbotServer {
                         future.completeExceptionally(error);
                     }
                 );
+                } // end else (non-RAG streaming)
 
                 // Wait for streaming to complete
                 future.join();

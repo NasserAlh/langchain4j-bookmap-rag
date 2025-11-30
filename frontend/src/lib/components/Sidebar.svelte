@@ -10,9 +10,13 @@
 		CircleX,
 		CircleAlert,
 		Moon,
-		Sun
+		Sun,
+		PanelLeftClose,
+		PanelLeft
 	} from 'lucide-svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
+	import ConfirmDialog from './ConfirmDialog.svelte';
+	import { fly } from 'svelte/transition';
 
 	let {
 		settings,
@@ -20,29 +24,58 @@
 		onSettingsChange,
 		onToggleRag,
 		onIngestDocuments,
-		onClearHistory
+		onClearHistory,
+		collapsed = false,
+		onToggleCollapse
 	}: {
 		settings: Settings;
 		connectionStatus: ConnectionStatus;
 		onSettingsChange: (settings: Partial<Settings>) => void;
 		onToggleRag: () => void;
-		onIngestDocuments: () => void;
+		onIngestDocuments: () => Promise<void> | void;
 		onClearHistory: () => void;
+		collapsed?: boolean;
+		onToggleCollapse?: () => void;
 	} = $props();
 
 	let isIngesting = $state(false);
+	let showClearConfirm = $state(false);
+
+	// Temperature presets
+	const temperaturePresets = [
+		{ label: 'Precise', value: 0.0, description: 'Deterministic, factual' },
+		{ label: 'Balanced', value: 0.7, description: 'Default, versatile' },
+		{ label: 'Creative', value: 1.2, description: 'Imaginative, varied' }
+	];
 
 	function handleThemeToggle() {
 		themeStore.toggle();
 	}
 
-	function handleIngest() {
+	async function handleIngest() {
 		isIngesting = true;
 		try {
-			onIngestDocuments();
+			await onIngestDocuments();
 		} finally {
 			isIngesting = false;
 		}
+	}
+
+	function handleClearClick() {
+		showClearConfirm = true;
+	}
+
+	function handleClearConfirm() {
+		showClearConfirm = false;
+		onClearHistory();
+	}
+
+	function handleClearCancel() {
+		showClearConfirm = false;
+	}
+
+	function setTemperaturePreset(value: number) {
+		onSettingsChange({ temperature: value });
 	}
 
 	const statusColor = $derived(
@@ -55,7 +88,6 @@
 					: 'text-gray-400'
 	);
 
-	// In Svelte 5, components are dynamic by default - use the component directly
 	const StatusIcon = $derived(
 		connectionStatus === 'connected'
 			? CircleCheck
@@ -63,7 +95,24 @@
 				? CircleX
 				: CircleAlert
 	);
+
+	// Find closest preset for highlighting
+	const activePreset = $derived(
+		temperaturePresets.find((p) => Math.abs(p.value - settings.temperature) < 0.05)?.value ?? null
+	);
 </script>
+
+<!-- Confirm Dialog -->
+<ConfirmDialog
+	open={showClearConfirm}
+	title="Clear Chat History"
+	message="This will permanently delete all messages in this conversation. This action cannot be undone."
+	confirmText="Clear History"
+	cancelText="Keep Messages"
+	variant="danger"
+	onConfirm={handleClearConfirm}
+	onCancel={handleClearCancel}
+/>
 
 <aside class="w-72 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-700 flex flex-col">
 	<!-- Header -->
@@ -111,11 +160,28 @@
 			</select>
 		</div>
 
-		<!-- Temperature slider -->
+		<!-- Temperature slider with presets -->
 		<div>
 			<label for="temperature-slider" class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
 				Temperature: {settings.temperature.toFixed(1)}
 			</label>
+
+			<!-- Preset buttons -->
+			<div class="flex gap-1 mb-3">
+				{#each temperaturePresets as preset}
+					<button
+						onclick={() => setTemperaturePreset(preset.value)}
+						class="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg transition-all duration-200
+							{activePreset === preset.value
+								? 'bg-blue-500 text-white shadow-sm'
+								: 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-600'}"
+						title={preset.description}
+					>
+						{preset.label}
+					</button>
+				{/each}
+			</div>
+
 			<input
 				id="temperature-slider"
 				type="range"
@@ -124,11 +190,11 @@
 				step="0.1"
 				value={settings.temperature}
 				oninput={(e) => onSettingsChange({ temperature: parseFloat(e.currentTarget.value) })}
-				class="w-full h-2 bg-gray-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer"
+				class="w-full h-2 bg-gray-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
 			/>
 			<div class="flex justify-between text-xs text-gray-400 dark:text-slate-500 mt-1">
-				<span>Precise</span>
-				<span>Creative</span>
+				<span>0.0</span>
+				<span>1.5</span>
 			</div>
 		</div>
 
@@ -193,7 +259,7 @@
 	<!-- Footer actions -->
 	<div class="p-4 border-t border-gray-200 dark:border-slate-700">
 		<button
-			onclick={onClearHistory}
+			onclick={handleClearClick}
 			class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-950 dark:hover:bg-red-900 rounded-lg text-sm text-red-600 dark:text-red-400 transition-colors"
 		>
 			<Trash2 class="w-4 h-4" />

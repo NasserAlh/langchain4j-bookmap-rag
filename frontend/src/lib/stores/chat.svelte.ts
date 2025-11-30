@@ -44,9 +44,12 @@ export function setMessageUsage(id: string, usage: TokenUsage) {
 	if (msg) msg.usage = usage;
 }
 
-export function setMessageError(id: string, error: ApiError) {
+export function setMessageError(id: string, error: ApiError, interrupted: boolean = false) {
 	const msg = chatState.messages.find((m) => m.id === id);
-	if (msg) msg.error = error;
+	if (msg) {
+		msg.error = error;
+		msg.interrupted = interrupted;
+	}
 }
 
 export function clearMessages() {
