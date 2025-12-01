@@ -1,0 +1,74 @@
+/*
+ * JavaFX CSS for DeepSeek Chatbot GUI
+ *
+ * NOTE: JavaFX CSS only recognizes -fx-* prefixed properties.
+ * Standard CSS properties (background-color, padding, etc.) are IGNORED.
+ * AtlantaFX theme variables use format: -color-* (e.g., -color-bg-default)
+ */
+
+/* Main container */
+.main-container {
+    -fx-background-color: -color-bg-default;
+}
+
+/* Sidebar styling */
+.sidebar {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 0 1 0 0;
+}
+
+/* Chat area */
+.chat-area {
+    -fx-background-color: -color-bg-default;
+}
+
+/* Messages container */
+.messages-container {
+    -fx-background-color: transparent;
+}
+
+/* Welcome message */
+.welcome-message {
+    -fx-padding: 50 0 50 0;
+}
+
+/* User message bubble */
+.user-message {
+    -fx-background-color: -color-accent-subtle;
+    -fx-padding: 12 16 12 16;
+    -fx-background-radius: 16 16 4 16;
+    -fx-max-width: 600;
+}
+
+/* AI message bubble */
+.ai-message {
+    -fx-background-color: -color-bg-subtle;
+    -fx-padding: 12 16 12 16;
+    -fx-background-radius: 16 16 16 4;
+    -fx-max-width: 600;
+}
+
+/* Input area */
+.input-area {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* Status bar */
+.status-bar {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* Input field - rounded corners */
+.input-area .text-area {
+    -fx-background-radius: 8;
+}
+
+/* Send button - rounded corners */
+.input-area .button {
+    -fx-background-radius: 8;
+}

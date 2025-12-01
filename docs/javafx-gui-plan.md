@@ -14,7 +14,7 @@ This document outlines the implementation plan for building a modern desktop GUI
 | **JDK** | **25** | LTS release, recommended for JavaFX 25 |
 | **JavaFX** | 25.0.1 | Latest LTS (requires JDK 23+, JDK 25 recommended) |
 | **LangChain4j** | 1.0.0-beta1 | Existing chatbot framework |
-| **AtlantaFX** | 2.0.1+ | Modern CSS theme library (GitHub Primer-inspired) |
+| **AtlantaFX** | 2.1.0 | Modern CSS theme library (GitHub Primer-inspired) |
 
 ### Why JDK 25?
 - **Both LTS releases** - JavaFX 25 and JDK 25 are both Long-Term Support
@@ -171,13 +171,27 @@ Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
 
 ## 4. Implementation Phases
 
-### Phase 1: Project Setup & Basic UI
-1. Update `pom.xml` with JavaFX 25 dependencies
-2. Upgrade JDK from 21 to 23+
-3. Create `App.java` entry point
-4. Implement basic FXML layout (main window)
-5. Apply AtlantaFX theme
-6. Create simple chat display (non-functional)
+### Phase 1: Project Setup & Basic UI ✅ COMPLETED
+1. ✅ Update `pom.xml` with JDK 25 toolchain (DONE)
+2. ✅ Configure Maven Toolchains for JDK 25 (DONE)
+3. ✅ Add JavaFX 25 + AtlantaFX 2.1.0 dependencies (DONE)
+4. ✅ Create `App.java` entry point (DONE)
+5. ✅ Implement basic FXML layout (main window) (DONE)
+6. ✅ Apply AtlantaFX Primer Dark theme (DONE)
+7. ✅ Create simple chat display with placeholder (DONE)
+
+**Files Created:**
+- `src/main/java/com/example/chatbot/App.java` - JavaFX Application entry point
+- `src/main/java/com/example/chatbot/Launcher.java` - Bootstrap for non-modular classpath run
+- `src/main/java/com/example/chatbot/view/MainController.java` - FXML controller
+- `src/main/resources/fxml/main.fxml` - Main window layout
+- `src/main/resources/css/app.css` - Custom styling
+- `run-gui.bat` - Helper script to launch GUI with JDK 25
+
+**Running the GUI:**
+```batch
+run-gui.bat
+```
 
 **Maven Dependencies:**
 ```xml
@@ -185,7 +199,7 @@ Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
     <maven.compiler.source>25</maven.compiler.source>
     <maven.compiler.target>25</maven.compiler.target>
     <javafx.version>25.0.1</javafx.version>
-    <atlantafx.version>2.0.1</atlantafx.version>
+    <atlantafx.version>2.1.0</atlantafx.version>
 </properties>
 
 <dependencies>
@@ -589,45 +603,25 @@ src/
 
 ---
 
-## 11. Project Setup with JDK 25
+## 11. Project Setup with JDK 25 (COMPLETED)
 
-### Upgrading Current Project to JDK 25
+### Current Configuration
 
-This project (`langchain4j-bookmap-rag`) will use JDK 25 for both the chatbot backend and JavaFX GUI.
+This project uses **JDK 25** via Maven Toolchains while keeping JDK 21 as the system default for Bookmap addon development.
 
-### Step 1: Install JDK 25
-```powershell
-# Option 1: Using winget
-winget install EclipseAdoptium.Temurin.25.JDK
+| Component | Path |
+|-----------|------|
+| JDK 25 | `C:\Program Files\Eclipse Adoptium\jdk-25.0.1+8` |
+| JDK 21 (system default) | `C:\Program Files\Eclipse Adoptium\jdk-21.0.9.10-hotspot` |
+| Toolchains config | `~/.m2/toolchains.xml` |
 
-# Option 2: Download from Adoptium
-# https://adoptium.net/temurin/releases/?version=25
+### Configured Files
 
-# JDK 25 typically installs to:
-# C:\Program Files\Eclipse Adoptium\jdk-25.0.x-hotspot\
-```
-
-### Step 2: Configure Maven Toolchains (Recommended)
-
-This allows the project to use JDK 25 while keeping JDK 21 as system default for Bookmap work.
-
-Create/edit `~/.m2/toolchains.xml`:
+#### `~/.m2/toolchains.xml`
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <toolchains>
-    <!-- JDK 21 for Bookmap addons (other projects) -->
-    <toolchain>
-        <type>jdk</type>
-        <provides>
-            <version>21</version>
-            <vendor>adoptium</vendor>
-        </provides>
-        <configuration>
-            <jdkHome>C:\Program Files\Eclipse Adoptium\jdk-21.0.x-hotspot</jdkHome>
-        </configuration>
-    </toolchain>
-
-    <!-- JDK 25 for this chatbot project -->
+    <!-- JDK 25 for JavaFX projects -->
     <toolchain>
         <type>jdk</type>
         <provides>
@@ -635,15 +629,25 @@ Create/edit `~/.m2/toolchains.xml`:
             <vendor>adoptium</vendor>
         </provides>
         <configuration>
-            <jdkHome>C:\Program Files\Eclipse Adoptium\jdk-25.0.x-hotspot</jdkHome>
+            <jdkHome>C:\Program Files\Eclipse Adoptium\jdk-25.0.1+8</jdkHome>
+        </configuration>
+    </toolchain>
+
+    <!-- JDK 21 for Bookmap addons (system default) -->
+    <toolchain>
+        <type>jdk</type>
+        <provides>
+            <version>21</version>
+            <vendor>adoptium</vendor>
+        </provides>
+        <configuration>
+            <jdkHome>C:\Program Files\Eclipse Adoptium\jdk-21.0.9.10-hotspot</jdkHome>
         </configuration>
     </toolchain>
 </toolchains>
 ```
 
-### Step 3: Update pom.xml
-
-Add toolchain plugin to use JDK 25:
+#### `pom.xml` (Updated)
 ```xml
 <properties>
     <maven.compiler.source>25</maven.compiler.source>
@@ -657,7 +661,7 @@ Add toolchain plugin to use JDK 25:
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-toolchains-plugin</artifactId>
-            <version>3.1.0</version>
+            <version>3.2.0</version>
             <executions>
                 <execution>
                     <goals>
@@ -673,6 +677,16 @@ Add toolchain plugin to use JDK 25:
                 </toolchains>
             </configuration>
         </plugin>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>3.13.0</version>
+            <configuration>
+                <source>25</source>
+                <target>25</target>
+                <release>25</release>
+            </configuration>
+        </plugin>
     </plugins>
 </build>
 ```
@@ -680,19 +694,49 @@ Add toolchain plugin to use JDK 25:
 ### Running the Project
 
 ```powershell
-# Build and run (uses JDK 25 via toolchain, system default stays JDK 21)
-cd C:\Users\nasser\Dev\langchain4j-bookmap-rag
-mvn clean javafx:run
+# Build (uses JDK 25 via toolchain automatically)
+mvn clean compile
+
+# Run chatbot CLI
+mvn exec:java
+
+# Run JavaFX GUI (recommended - uses run-gui.bat)
+run-gui.bat
+
+# Alternative: Direct JDK 25 command
+"C:\Program Files\Eclipse Adoptium\jdk-25.0.1+8\bin\java" --enable-native-access=ALL-UNNAMED -cp "target/classes;target/lib/*" com.example.chatbot.Launcher
 ```
 
-### Alternative: Per-Project JAVA_HOME Script
+> **Note:** The javafx-maven-plugin approach is not recommended due to compatibility issues with JDK 25. Use `run-gui.bat` instead.
 
-Create `run.bat` in the project root:
+### Verification
+
+```powershell
+PS> mvn clean compile
+[INFO] --- toolchains:3.2.0:toolchain (default) @ deepseek-chatbot ---
+[INFO] Required toolchain: jdk [ version='25' ]
+[INFO] Found matching toolchain for type jdk: JDK[C:\Program Files\Eclipse Adoptium\jdk-25.0.1+8]
+[INFO] --- compiler:3.13.0:compile (default-compile) @ deepseek-chatbot ---
+[INFO] Toolchain in maven-compiler-plugin: JDK[C:\Program Files\Eclipse Adoptium\jdk-25.0.1+8]
+[INFO] Compiling 5 source files with javac [forked debug release 25]
+[INFO] BUILD SUCCESS
+```
+
+### Alternative: `run.bat` Script
+
+A helper script is available for explicit JDK 25 usage:
 ```batch
 @echo off
-set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-25.0.x-hotspot
+set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-25.0.1+8
 set PATH=%JAVA_HOME%\bin;%PATH%
-mvn javafx:run
+mvn %*
+```
+
+Usage:
+```powershell
+.\run.bat              # Runs mvn exec:java (default)
+.\run.bat clean compile
+.\run.bat javafx:run
 ```
 
 ### JavaFX 25 Removed/Changed APIs

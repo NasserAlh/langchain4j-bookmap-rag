@@ -35,11 +35,28 @@ export DEEPSEEK_API_KEY=your_deepseek_api_key
 export OPENAI_API_KEY=your_openai_api_key
 ```
 
-### Running the Chatbot
+### Running the Chatbot (CLI)
 
 ```bash
-# Compile and run
+# Compile and run CLI chatbot
 mvn clean compile exec:java
+```
+
+### Running the GUI (JavaFX 25)
+
+The GUI requires JDK 25 due to JavaFX 25. Use the provided script:
+
+```batch
+# Windows - recommended way to run GUI
+run-gui.bat
+```
+
+**Why a script?** The official `javafx-maven-plugin` (v0.0.8) hasn't been updated since October 2021 and doesn't support JDK 25. The script directly invokes JDK 25's `java` command with proper classpath configuration.
+
+Alternative manual command:
+```batch
+mvn compile dependency:copy-dependencies -DoutputDirectory=target/lib
+"C:\Program Files\Eclipse Adoptium\jdk-25.0.1+8\bin\java" --enable-native-access=ALL-UNNAMED -cp "target/classes;target/lib/*" com.example.chatbot.Launcher
 ```
 
 ---
@@ -108,7 +125,7 @@ The prompt shows active modes:
 - **Retry logic** - Automatic retries on transient errors
 - **Token usage tracking** - Monitor API costs
 - **Model switching** - Use `deepseek-chat` or `deepseek-reasoner`
-- **JavaFX 25 GUI** - Modern desktop interface (planned, see `docs/javafx-gui-plan.md`)
+- **JavaFX 25 GUI** - Modern desktop interface with AtlantaFX theme (Phase 1 complete, run with `run-gui.bat`)
 
 ---
 

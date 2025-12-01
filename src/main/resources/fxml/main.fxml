@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.example.chatbot.view.MainController"
+            styleClass="main-container">
+
+    <!-- Left Sidebar -->
+    <left>
+        <VBox prefWidth="250" styleClass="sidebar" spacing="10">
+            <padding>
+                <Insets top="15" right="15" bottom="15" left="15"/>
+            </padding>
+
+            <!-- New Chat Button -->
+            <Button text="+ New Chat" maxWidth="Infinity" styleClass="accent"/>
+
+            <Separator/>
+
+            <!-- Chat History Label -->
+            <Label text="Chat History" styleClass="text-muted"/>
+
+            <!-- Chat History List -->
+            <ListView fx:id="chatHistoryList" VBox.vgrow="ALWAYS"/>
+
+            <Separator/>
+
+            <!-- Settings Section -->
+            <VBox spacing="8">
+                <HBox alignment="CENTER_LEFT" spacing="10">
+                    <Label text="RAG Mode"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <ToggleButton fx:id="ragToggle" text="OFF"/>
+                </HBox>
+
+                <HBox alignment="CENTER_LEFT" spacing="10">
+                    <Label text="Streaming"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <ToggleButton fx:id="streamToggle" text="ON" selected="true"/>
+                </HBox>
+
+                <HBox alignment="CENTER_LEFT" spacing="10">
+                    <Label text="Theme"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <ToggleButton fx:id="themeToggle" text="Dark" selected="true"/>
+                </HBox>
+            </VBox>
+        </VBox>
+    </left>
+
+    <!-- Main Chat Area -->
+    <center>
+        <VBox styleClass="chat-area">
+            <!-- Chat Messages -->
+            <ScrollPane fx:id="chatScrollPane" fitToWidth="true" VBox.vgrow="ALWAYS">
+                <VBox fx:id="messagesContainer" spacing="15" styleClass="messages-container">
+                    <padding>
+                        <Insets top="20" right="20" bottom="20" left="20"/>
+                    </padding>
+
+                    <!-- Welcome Message -->
+                    <VBox alignment="CENTER" spacing="10" styleClass="welcome-message">
+                        <Label text="DeepSeek Chatbot" styleClass="title-1"/>
+                        <Label text="Powered by LangChain4j" styleClass="text-muted"/>
+                    </VBox>
+                </VBox>
+            </ScrollPane>
+
+            <!-- Input Area -->
+            <HBox spacing="10" alignment="CENTER" styleClass="input-area">
+                <padding>
+                    <Insets top="15" right="20" bottom="15" left="20"/>
+                </padding>
+
+                <TextArea fx:id="inputField"
+                          promptText="Type your message here... (Enter to send, Shift+Enter for new line)"
+                          prefRowCount="2"
+                          wrapText="true"
+                          HBox.hgrow="ALWAYS"/>
+
+                <Button fx:id="sendButton" text="Send" styleClass="accent" prefHeight="50"/>
+            </HBox>
+
+            <!-- Status Bar -->
+            <HBox spacing="15" alignment="CENTER_LEFT" styleClass="status-bar">
+                <padding>
+                    <Insets top="8" right="20" bottom="8" left="20"/>
+                </padding>
+
+                <Label fx:id="modelLabel" text="Model: deepseek-chat" styleClass="text-muted"/>
+                <Label fx:id="tempLabel" text="Temp: 0.7" styleClass="text-muted"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="tokenLabel" text="Tokens: -- in, -- out" styleClass="text-muted"/>
+                <Label fx:id="costLabel" text="Cost: $0.00" styleClass="text-muted"/>
+            </HBox>
+        </VBox>
+    </center>
+
+</BorderPane>
