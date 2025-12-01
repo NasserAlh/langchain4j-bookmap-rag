@@ -1,3 +1,117 @@
+# LangChain4j Bookmap RAG Chatbot
+
+A Java chatbot using LangChain4j with DeepSeek API and RAG (Retrieval-Augmented Generation) support for Bookmap trading platform documentation.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- **Java 25** (project uses JDK 25 via Maven Toolchains, system default JDK 21 unchanged)
+- **Maven 3.6+**
+- **DeepSeek API key** (required)
+- **OpenAI API key** (optional, for RAG features)
+
+### JDK Setup
+
+This project uses JDK 25 for JavaFX 25 GUI support. Your system default JDK remains unchanged.
+
+```powershell
+# Install JDK 25 (Windows)
+winget install EclipseAdoptium.Temurin.25.JDK
+
+# Maven automatically uses JDK 25 via toolchains (configured in ~/.m2/toolchains.xml)
+mvn clean compile
+```
+
+### Environment Setup
+
+```bash
+# Required: DeepSeek API for chat functionality
+export DEEPSEEK_API_KEY=your_deepseek_api_key
+
+# Optional: OpenAI API for embeddings (RAG features)
+export OPENAI_API_KEY=your_openai_api_key
+```
+
+### Running the Chatbot
+
+```bash
+# Compile and run
+mvn clean compile exec:java
+```
+
+---
+
+## Usage
+
+### Basic Chat
+
+Once running, type your message and press Enter. The chatbot maintains conversation history (last 20 messages).
+
+```
+You [Stream]: What is LangChain4j?
+
+DeepSeek: LangChain4j is a Java library for building applications with LLMs...
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `/stream` | Toggle streaming mode (ON by default) |
+| `/rag` | Toggle RAG mode for Bookmap documentation |
+| `/ingest` | Build/rebuild the knowledge base from `knowledge-materials/` |
+| `/clear` | Clear conversation history |
+| `/temp <value>` | Set temperature (0.0-2.0) |
+| `/model <name>` | Switch model (`deepseek-chat` or `deepseek-reasoner`) |
+| `/usage` | Toggle token usage display |
+| `/quit` | Exit the chatbot |
+
+### Temperature Guidelines
+
+| Value | Use Case |
+|-------|----------|
+| 0.0 | Coding/Math (deterministic) |
+| 1.0 | Data Analysis (balanced) |
+| 1.3 | General Conversation |
+| 1.5 | Creative Writing |
+
+### Using RAG Mode
+
+RAG mode augments your queries with relevant Bookmap API documentation:
+
+1. **First-time setup**: Run `/ingest` to build the knowledge base (~30 seconds, ~$0.002)
+2. **Enable RAG**: Type `/rag` to toggle RAG mode on
+3. **Ask questions**: Ask about Bookmap add-on development
+
+```
+You [Stream] [RAG]: How do I create a basic Bookmap add-on?
+
+DeepSeek: Based on the documentation, here's how to create a basic add-on...
+```
+
+### Prompt Indicators
+
+The prompt shows active modes:
+- `[Stream]` - Streaming responses enabled
+- `[RAG]` - RAG mode enabled (Bookmap docs)
+
+---
+
+## Features
+
+- **Streaming responses** - See tokens as they arrive
+- **RAG support** - Query Bookmap API documentation
+- **Conversation memory** - Maintains context across messages
+- **Retry logic** - Automatic retries on transient errors
+- **Token usage tracking** - Monitor API costs
+- **Model switching** - Use `deepseek-chat` or `deepseek-reasoner`
+- **JavaFX 25 GUI** - Modern desktop interface (planned, see `docs/javafx-gui-plan.md`)
+
+---
+
 # RAG Processing Guide for Bookmap Knowledge Base
 
 This guide explains how to chunk and process the files under `knowledge-materials/` for effective RAG (Retrieval-Augmented Generation) outcomes.
